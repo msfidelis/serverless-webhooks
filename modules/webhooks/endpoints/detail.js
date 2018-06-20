@@ -8,7 +8,16 @@ exports.handler = (event, context, callback) => {
         statusCode : 201, 
         body: JSON.stringify({
             status: 201,
-            hashkey : 'mocked hashkey',
+            webhook : {
+                hashkey: hashkey,
+                status_hook: 'pending',
+                success_response: '{"status": 200}',
+                error_response: 'NULL',
+                target_url: 'http://hook.com.br/legal',
+                client: 'Stephen Hawking',
+                method: 'POST',
+                payload: '{"data": 123123}'
+            },
             hateoas : {
                 webhook_status: {
                     method: "GET",
