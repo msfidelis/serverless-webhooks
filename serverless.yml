@@ -16,7 +16,7 @@ provider:
       - .test/**
   
   environment: #Global Environment variables
-    DYNAMO_TABLE_BOOKS: ${self:custom.dynamo-books} # Reference to Custom Env
+    DYNAMO_TABLE_WEBHOOKS: ${self:custom.dynamo-webhooks} # Reference to Custom Env
     SQS_QUEUE_URL: 'https://sqs.${self:provider.region}.amazonaws.com/#{AWS::AccountId}/${self:custom.sqs-logs}'
     REGION: ${self:custom.region}
 
@@ -52,7 +52,7 @@ custom:
   prefix: ${self:custom.stage}-${self:service}
   process: ${self:custom.prefix}-process
   config: ${self:custom.prefix}-config
-  dynamo-books: ${self:custom.prefix}-BooksCatalog
+  dynamo-webhooks: ${self:custom.prefix}-webhooks
   sns-logs: ${self:custom.prefix}-trigger-logs
   sqs-logs: ${self:custom.prefix}-messages-logs
 
@@ -63,7 +63,7 @@ functions:
 
   # API Endpoints
   webhooks-register:
-    handler: modules/lalalala
+    handler: modules/webhooks/create.handler
     memorySize: 128
     timeout: 60
     events:
@@ -76,11 +76,11 @@ functions:
 resources:  # CloudFormation template syntax
 
   Resources:
-    #DynamoDB Books Table
-    BooksCatalog:
+    #DynamoDB Webhooks Table
+    WebhooksRegister:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: ${self:custom.dynamo-books}
+        TableName: ${self:custom.dynamo-webhooks}
         AttributeDefinitions:
           - AttributeName: hashkey
             AttributeType: S
@@ -90,11 +90,13 @@ resources:  # CloudFormation template syntax
         ProvisionedThroughput:
           ReadCapacityUnits: 2
           WriteCapacityUnits: 1
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
 
     # SQS Queue to Update DynamoDB
-    BooksQueueExample:
+    WebhooksQueue:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: ${self:custom.sqs-logs}
+        QueueName: ${self:custom.sqs-webhooks}
         MessageRetentionPeriod: 1209600
-        VisibilityTimeout: 60
+        VisibilityTimeout: 120
