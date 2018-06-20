@@ -1,0 +1,26 @@
+{
+  "name": "serverless-webhooks",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha --recursive"
+  },
+  "keywords": [
+    "api",
+    "serverless",
+    "lambda",
+    "AWS"
+  ],
+  "author": "Matheus Fidelis <matheus.fidelis@superlogica.com>",
+  "license": "MIT",
+  "dependencies": {
+    "bluebird": "^3.5.1",
+    "serverless-pseudo-parameters": "^1.6.0"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.254.1",
+    "chai": "^4.1.2",
+    "mocha": "^5.2.0"
+  }
+}

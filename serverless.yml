@@ -1,0 +1,100 @@
+service: serverless-webhooks
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stage: prod
+  region: us-east-1
+  timeout: 10 #Default Lambda timeout 
+  memorySize: 512 #Default Lambda Memory Size
+  versionFunctions: false # No functions versioning 
+  package:
+    excludeDevDependencies: true
+    exclude:
+      - .git/**
+      - .vscode/**
+      - .test/**
+  
+  environment: #Global Environment variables
+    DYNAMO_TABLE_BOOKS: ${self:custom.dynamo-books} # Reference to Custom Env
+    SQS_QUEUE_URL: 'https://sqs.${self:provider.region}.amazonaws.com/#{AWS::AccountId}/${self:custom.sqs-logs}'
+    REGION: ${self:custom.region}
+
+  iamRoleStatements: # Permissions for all of your functions can be set here
+
+  - Effect: Allow
+    Action: # Gives permission to DynamoDB tables in a specific region
+      - dynamodb:DescribeTable
+      - dynamodb:Query
+      - dynamodb:Scan
+      - dynamodb:GetItem
+      - dynamodb:PutItem
+      - dynamodb:UpdateItem
+      - dynamodb:DeleteItem
+    Resource: "arn:aws:dynamodb:us-east-1:*:*"
+
+  - Effect: Allow
+    Action: # Gives permission to Lambda execution
+      - lambda:InvokeFunction
+      - lambda:InvokeAsync
+    Resource: "*"
+
+  - Effect: Allow
+    Action: # Gives permission to SQS 
+      - sqs:DeleteMessage
+      - sqs:ReceiveMessage
+      - sqs:SendMessage
+    Resource: arn:aws:sqs:*:*:*
+
+custom:
+  region: ${self:provider.region}
+  stage: ${opt:stage, self:provider.stage}
+  prefix: ${self:custom.stage}-${self:service}
+  process: ${self:custom.prefix}-process
+  config: ${self:custom.prefix}-config
+  dynamo-books: ${self:custom.prefix}-BooksCatalog
+  sns-logs: ${self:custom.prefix}-trigger-logs
+  sqs-logs: ${self:custom.prefix}-messages-logs
+
+plugins:
+  - serverless-pseudo-parameters
+
+functions:
+
+  # API Endpoints
+  webhooks-register:
+    handler: modules/lalalala
+    memorySize: 128
+    timeout: 60
+    events:
+      - http:
+          path: webhooks
+          method: post
+
+
+# Infrastrucure - Cloud Formation
+resources:  # CloudFormation template syntax
+
+  Resources:
+    #DynamoDB Books Table
+    BooksCatalog:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.dynamo-books}
+        AttributeDefinitions:
+          - AttributeName: hashkey
+            AttributeType: S
+        KeySchema:
+          - AttributeName: hashkey
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 1
+
+    # SQS Queue to Update DynamoDB
+    BooksQueueExample:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.sqs-logs}
+        MessageRetentionPeriod: 1209600
+        VisibilityTimeout: 60
