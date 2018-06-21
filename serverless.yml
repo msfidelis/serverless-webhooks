@@ -16,8 +16,8 @@ provider:
       - .test/**
   
   environment: #Global Environment variables
-    DYNAMO_TABLE_WEBHOOKS: ${self:custom.dynamo-webhooks} # Reference to Custom Env
-    SQS_QUEUE_URL: 'https://sqs.${self:provider.region}.amazonaws.com/#{AWS::AccountId}/${self:custom.sqs-logs}'
+    WEBHOOKS_DYNAMO_TABLE: ${self:custom.dynamo-webhooks} # Reference to Custom Env
+    WEBHOOKS_SQS_QUEUE: 'https://sqs.${self:provider.region}.amazonaws.com/#{AWS::AccountId}/${self:custom.sqs-webhooks}'
     REGION: ${self:custom.region}
 
   iamRoleStatements: # Permissions for all of your functions can be set here
@@ -54,7 +54,7 @@ custom:
   config: ${self:custom.prefix}-config
   dynamo-webhooks: ${self:custom.prefix}-webhooks
   sns-logs: ${self:custom.prefix}-trigger-logs
-  sqs-logs: ${self:custom.prefix}-messages-logs
+  sqs-webhooks: ${self:custom.prefix}-messages-logs
 
 plugins:
   - serverless-pseudo-parameters
@@ -63,7 +63,7 @@ functions:
 
   # API Endpoints
   webhooks-register:
-    handler: modules/webhooks/create.handler
+    handler: modules/webhooks/endpoints/create.handler
     memorySize: 128
     timeout: 60
     events:
@@ -76,7 +76,7 @@ functions:
 resources:  # CloudFormation template syntax
 
   Resources:
-    #DynamoDB Webhooks Table
+
     WebhooksRegister:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -93,7 +93,7 @@ resources:  # CloudFormation template syntax
         StreamSpecification:
           StreamViewType: NEW_AND_OLD_IMAGES
 
-    # SQS Queue to Update DynamoDB
+
     WebhooksQueue:
       Type: AWS::SQS::Queue
       Properties:
