@@ -8,12 +8,10 @@ const crypto = require('take-my-hash');
  * @param {*} salt 
  * @param {*} stringToEnforce 
  */
-function sha1(obj, salt = false, stringToEnforce = false) {
+module.exports = (obj, salt = false, stringToEnforce = false) => {
     let stringObject = JSON.stringify(obj);
     
     if (salt) stringObject = `${stringObject}${salt}`;
     if (stringToEnforce) stringObject = `${stringObject}${stringToEnforce}`;
     return crypto.sha1(stringObject);
 };
-
-module.exports = sha1;

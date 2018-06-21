@@ -13,12 +13,12 @@ const DYNAMO_TABLE = process.env.WEBHOOKS_DYNAMO_TABLE;
  */
 module.exports.create = async data => {
 
-    if (typeof webhookData !== 'object') webhookData = await JSON.parse(webhookData)
+    if (typeof data !== 'object') data = await parsers.parseStringToObject(data);
 
     const hashkey       = await uuid();
     const payload       = await parsers.parseObjectToString(data.payload);
     const headers       = await parsers.parseObjectToString(data.headers);
-    const payload_hash  = await hash.sha1(data.payload, data.url, data.method);
+    const payload_hash  = await hash(data.payload, data.url, data.method);
 
     if (!data.headers) {
         data.headers = { "Content-type": "Application/json" };
@@ -39,6 +39,6 @@ module.exports.create = async data => {
         hook_name: data.hook_name || 'NULL'
     };
 
-    return await dynamo.save(webhook, DYNAMO_TABLE);
+    return await dynamo.save(webhook, DYNAMO_TABLE).then(success => webhook);
 
 }
