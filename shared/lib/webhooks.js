@@ -42,3 +42,29 @@ module.exports.create = async data => {
     return await dynamo.save(webhook, DYNAMO_TABLE).then(success => webhook);
 
 }
+
+/**
+ * Find a simple webhook
+ * @param {*} hashkey 
+ */
+module.exports.detail =  hashkey => {
+
+    return new Promise((resolve, reject) => {
+
+        const options = {
+            ConsistentRead: true,
+            FilterExpression: "#hashkey = :h",
+            ExpressionAttributeNames: {"#hashkey": "hashkey"},
+            ExpressionAttributeValues: {":h": hashkey}
+        };
+
+        dynamo.scan(options, null, DYNAMO_TABLE)
+            .then(success => {
+                if (success.Count != 1) reject(success); 
+                resolve(success.Items[0]);
+            })
+            .catch(err => reject(err));
+    
+    });
+
+}

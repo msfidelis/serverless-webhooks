@@ -65,11 +65,21 @@ functions:
   webhooks-register:
     handler: modules/webhooks/endpoints/create.handler
     memorySize: 128
-    timeout: 60
+    timeout: 30
     events:
       - http:
           path: webhooks
           method: post
+
+  webhooks-detail:
+    handler: modules/webhooks/endpoints/detail.handler
+    memorySize: 128
+    timeout: 30
+    events:
+      - http:
+          path: webhooks/{hashkey}
+          method: get
+
 
 
 # Infrastrucure - Cloud Formation
