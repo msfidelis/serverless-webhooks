@@ -49,7 +49,7 @@ const client = {
      * You must inform the KeyConditionExpression 
      * and ExpressionAttributeNames
      */
-    query: where => {
+    query: (where, table = tableDynamo) => {
         where.TableName = tableDynamo;
         return dynamoClient.query(where).promise();
     },
