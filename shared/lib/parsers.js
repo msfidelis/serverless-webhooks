@@ -1,5 +1,8 @@
 'use strict';
 
+/**
+ * 
+ */
 module.exports.parseObjectToString = obj => {
     if (typeof obj == "object") {
         return JSON.stringify(obj);
@@ -8,6 +11,9 @@ module.exports.parseObjectToString = obj => {
     } 
 }
 
+/**
+ * 
+ */
 module.exports.parseStringToObject = str => {
     try {
         return JSON.parse(str);
@@ -16,6 +22,9 @@ module.exports.parseStringToObject = str => {
     }
 };
 
+/**
+ * 
+ */
 module.exports.parseEvent = event => {
     try {
         const body = event.body ? event.body : event;
