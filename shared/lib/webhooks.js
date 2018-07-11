@@ -1,11 +1,19 @@
 'use strict';
 
-const hash = require('./hash-object');
-const uuid = require('./uuid');
-const parsers = require('./parsers');
-const dynamo = require('./dynamo');
+const axios     = require('axios');
 
-const DYNAMO_TABLE = process.env.WEBHOOKS_DYNAMO_TABLE;
+const hash      = require('./hash-object');
+const parsers   = require('./parsers');
+const dynamo    = require('./dynamo');
+const uuid      = require('./uuid');
+const sqs       = require('./sqs');
+const lambda    = require('./lambda');
+
+const DYNAMO_TABLE          = process.env.WEBHOOKS_DYNAMO_TABLE;
+const SQS_QUEUE             = process.env.WEBHOOKS_SQS_QUEUE;
+const MESSAGES_TO_CONSUME   = process.env.WEBHOOKS_MESSAGES_TO_CONSUME;
+const CONSUMER_INTERVAL     = process.env.WEBHOOKS_CONSUME_INTERVAL;
+const EXECUTION_FUNCTION    = process.env.WEBHOOKS_HOOKS_EXECUTOR;
 
 /**
  * Register a new Webhook
@@ -20,16 +28,16 @@ module.exports.create = async data => {
     const headers       = await parsers.parseObjectToString(data.headers);
     const payload_hash  = await hash(data.payload, data.url, data.method);
 
-    if (!data.headers) {
-        data.headers = { "Content-type": "Application/json" };
-    }
+    const actionsToSave = [ saveInDynamo, saveInSQS ];
+
+    if (!data.headers) data.headers = { "Content-type": "Application/json" }
 
     const webhook = {
         hashkey: hashkey,
         status_hook: 'pending',
         success_response: 'NULL',
         error_response: 'NULL',
-        target_url: data.url,
+        target_url: data.target_url,
         licenca: data.licenca || 'NULL',
         method: data.method,
         payload: payload,
@@ -39,32 +47,275 @@ module.exports.create = async data => {
         hook_name: data.hook_name || 'NULL'
     };
 
-    return await dynamo.save(webhook, DYNAMO_TABLE).then(success => webhook);
+    const operations = actionsToSave.map(action => action(webhook));
 
+    return Promise.all(operations).then(success => webhook);
 }
+
+/**
+ * Execution Handler
+ */
+module.exports.executionHandler = () => {
+    setInterval(() => {
+        consumeWebhooks().then(poll => {
+            if (poll.Messages == undefined) return;
+            const webhooks = poll.Messages.map(message => {
+                message.Body = parsers.parseStringToObject(message.Body)
+                return message;
+            });
+            return lambda.invoke(EXECUTION_FUNCTION, webhooks);
+        });
+    }, CONSUMER_INTERVAL)
+};
+
+/**
+ * Execute HTTP Requests
+ * @param {*} webhook 
+ */
+module.exports.run = (webhook, message) => {
+    return new Promise((resolve, reject) => {
+        canBeExecuted(webhook)
+            .then(isOk => {
+                send(webhook)
+                    .then(success => successHandler(message, success))
+                    .catch(err => failHandler(message, err));
+            })
+            .catch(err => {
+                console.log(err);
+                const errorHandlers = { locked: lockedHandler, invalid: invalidHandler };
+                errorHandlers[err](message)
+                reject(webhook);
+            });
+    });
+};
 
 /**
  * Find a simple webhook
  * @param {*} hashkey 
  */
-module.exports.detail =  hashkey => {
+module.exports.detail =  hashkey => getWebhook(hashkey);
 
+/**
+ * Verify if this Webhook can be executed
+ * @param {*} webhook 
+ */
+const canBeExecuted = webhook => {
+    return new Promise((resolve, reject) => {
+        const actionsToValidate = [ limitHandler, statusHandler ];
+        const validations = actionsToValidate.map(action => action(webhook));
+    
+        Promise.all(validations)
+            .then(success => resolve(webhook))
+            .catch(err => reject(err));
+    });
+}
+
+/**
+ * Verify limit handler
+ * @param {*} num 
+ */
+const limitHandler = webhook => {
+    return new Promise(async (resolve, reject) => {
+        await console.log(webhook.retry);
+        const isValid = webhook.retry <= 9;
+        console.log(isValid);
+        if (isValid === true) {
+            await resolve(isValid);
+        } else {
+            await reject('locked');
+        }
+    });
+}
+
+/**
+ * Verify Hook Status
+ * @param {*} status 
+ */
+const statusHandler = webhook => {
+    return new Promise((resolve, reject) => {
+        const validStatus = [ 'pending', 'error', 'forced' ]
+        const status  = webhook.status_hook;
+        const isValid = validStatus.includes(status);
+        if (isValid) resolve(isValid)
+        reject('invalid');
+    });
+};
+
+/**
+ * Error Message Handler
+ */
+const errorHandler = (webhook, error) => {
+    return Promise.all([
+        setErrorStatus(webhook, error)
+    ]);
+};
+
+/**
+ * Locked Message Handler
+ * @param {*} webhook 
+ */
+const lockedHandler = webhook => {
+    return Promise.all([
+        removeFromSQS(webhook),
+        setLockedStatus(webhook)
+    ]);
+};
+
+/**
+ * Invalid Message Handler
+ * @param {*} webhook 
+ */
+const invalidHandler = webhook => {
+    return Promise.all([
+        removeFromSQS(webhook),
+        setInvalidStatus(webhook.Body.hashkey)
+    ]);
+};
+
+/**
+ * Success Message Handler
+ * @param {*} webhook 
+ */
+const successHandler = (webhook, response) => {
+    return Promise.all([
+        removeFromSQS(webhook),
+        setSuccessStatus(webhook, response)
+    ]);
+}
+
+/**
+ * Fail Message Handler
+ * @param {*} webhook 
+ */
+const failHandler = (webhook, response) => {
+    console.log(response);
+    return Promise.all([setErrorStatus(webhook, response)]);
+};
+
+/**
+ * Set Lock Status on Webhook 
+ * @param {*} hashkey 
+ */
+const setLockedStatus = webhook => {
+    const hashkey   = webhook.Body.hashkey;
+    const key = { hashkey: hashkey };
+    const expression = "set status_hook = :l";
+    const values = { ":l": "locked"};
+    return dynamo.update(key, expression, values, DYNAMO_TABLE);
+}
+
+/**
+ * Set Success Status on Webhook
+ * @param {*} hashkey 
+ */
+const setSuccessStatus = (webhook, body = '') => {
+    const hashkey   = webhook.Body.hashkey;
+    const response  = parsers.parseObjectToString(body);
+    const key = { hashkey: hashkey };
+    const expression = "set status_hook = :s, success_response = :r, retry = retry + :val";
+    const values = { ":s": "success", ":r": response, ":val": 1};
+    return dynamo.update(key, expression, values, DYNAMO_TABLE);
+};
+
+/**
+ * Set Error Status on Webhook
+ * @param {*} hashkey 
+ */
+const setErrorStatus = (webhook, body = '') => {
+    const hashkey   = webhook.Body.hashkey;
+    const response  = parsers.parseObjectToString(body);
+    const key = { hashkey: hashkey };
+    const expression = "set status_hook = :s, error_response = :r, retry = retry + :val";
+    const values = { ":s": "error", ":r": response, ":val": 1};
+    return dynamo.update(key, expression, values, DYNAMO_TABLE);
+};
+
+/**
+ * Set Invalid Status on Webhook
+ * @param {*} hashkey 
+ */
+const setInvalidStatus = (webhook, body = '') => {
+    const hashkey   = webhook.Body.hashkey;
+    const key = { hashkey: hashkey };
+    const expression = "set status_hook = :s";
+    const values = { ":s": "invalid"};
+    return dynamo.update(key, expression, values, DYNAMO_TABLE);
+};
+
+/**
+ * Find a Webhook on DynamoDB
+ * @param {*} hashkey 
+ */
+const getWebhook = hashkey => {
     return new Promise((resolve, reject) => {
 
-        const options = {
+        const params = {
             ConsistentRead: true,
             FilterExpression: "#hashkey = :h",
             ExpressionAttributeNames: {"#hashkey": "hashkey"},
             ExpressionAttributeValues: {":h": hashkey}
         };
 
-        dynamo.scan(options, null, DYNAMO_TABLE)
-            .then(success => {
-                if (success.Count != 1) reject(success); 
-                resolve(success.Items[0]);
+        dynamo.scan(params, null, DYNAMO_TABLE)
+            .then(results => {
+                if (results.Count != 1) reject(results); 
+                resolve(results.Items[0]);
             })
             .catch(err => reject(err));
-    
-    });
 
-}
+    });
+};
+
+/**
+ * Send HTTP Requests
+ * @param {*} webhook 
+ */
+const send =  webhook => {
+    return new Promise((resolve, reject) => {
+
+        const options = {
+            url     : webhook.target_url,
+            method  : webhook.method,
+            data    : parsers.parseStringToObject(webhook.payload),
+            headers : JSON.parse(webhook.headers)   
+        };
+
+        axios(options)
+            .then(success => {
+                const body = success.data;
+                resolve(body);
+            })
+            .catch(error => {
+                if (error.response) reject(error.response.data);
+                if (error.message)  reject(error.message);
+                if (error.request)  reject(error.request.data);
+                reject(error);
+            });
+
+    });
+};
+
+/**
+ * Consume SQS Queue
+ */
+const consumeWebhooks = () => sqs.consumeQueue(MESSAGES_TO_CONSUME, SQS_QUEUE)
+
+/**
+ * Save message on DynamoDB Table
+ * @param {*} webhook 
+ */
+const saveInDynamo = webhook => dynamo.save(webhook, DYNAMO_TABLE);
+
+/**
+ * Save message on SQS Queue
+ * @param {*} webhook 
+ */
+const saveInSQS = webhook => sqs.save(webhook, SQS_QUEUE);
+
+/**
+ * Remove message from Webhooks Queue
+ * @param {*} message 
+ */
+const removeFromSQS = message => sqs.removeFromQueue(message, SQS_QUEUE);
+
+

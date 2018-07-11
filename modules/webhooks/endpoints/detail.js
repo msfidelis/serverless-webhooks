@@ -24,7 +24,7 @@ exports.handler = (event, context, callback) => {
                     },
                     webhook_force: {
                         method: "POST",
-                        endpoint: `/webhooks/${hashkey}`
+                        endpoint: `/webhooks/${hashkey}/force`
                     }
                 }
             }) 

@@ -15,6 +15,7 @@
   "author": "Matheus Fidelis <matheus.fidelis@superlogica.com>",
   "license": "MIT",
   "dependencies": {
+    "axios": "^0.18.0",
     "bluebird": "^3.5.1",
     "joi": "^13.4.0",
     "raj": "0.0.12",

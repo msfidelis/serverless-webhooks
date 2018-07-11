@@ -1,3 +1,6 @@
 'use strict';
 
-exports.worker = (event, context, callback) => {}
+const webhooks  = require('../../../shared/lib/webhooks');
+
+exports.worker = (event, context, callback) => webhooks.executionHandler();
+

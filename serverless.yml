@@ -5,7 +5,7 @@ provider:
   runtime: nodejs8.10
   stage: prod
   region: us-east-1
-  timeout: 10 #Default Lambda timeout 
+  timeout: 30 #Default Lambda timeout 
   memorySize: 512 #Default Lambda Memory Size
   versionFunctions: false # No functions versioning 
   package:
@@ -62,6 +62,7 @@ plugins:
 functions:
 
   # API Endpoints
+  
   webhooks-register:
     handler: modules/webhooks/endpoints/create.handler
     memorySize: 128
@@ -79,14 +80,32 @@ functions:
       - http:
           path: webhooks/{hashkey}
           method: get
-
-
+  
+  # Workers
+  webhooks-sqs:
+    handler: modules/webhooks/functions/sqs-worker.worker
+    memorySize: 256
+    timeout: 60
+    environment:
+      WEBHOOKS_MESSAGES_TO_CONSUME: "10"
+      WEBHOOKS_CONSUME_INTERVAL: "500"
+      WEBHOOKS_HOOKS_EXECUTOR: "${self:service}-${self:custom.stage}-webhooks-executor"
+    events:
+      - schedule: 
+          rate: rate(1 minute) 
+          enabled: false
+  
+  webhooks-executor:
+    handler: modules/webhooks/functions/execution-worker.worker
+    memorySize: 512
+    timeout: 60
 
 # Infrastrucure - Cloud Formation
 resources:  # CloudFormation template syntax
 
   Resources:
 
+    # Dynamo table
     WebhooksRegister:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -98,12 +117,12 @@ resources:  # CloudFormation template syntax
           - AttributeName: hashkey
             KeyType: HASH
         ProvisionedThroughput:
-          ReadCapacityUnits: 2
-          WriteCapacityUnits: 1
+          ReadCapacityUnits: 10
+          WriteCapacityUnits: 10
         StreamSpecification:
           StreamViewType: NEW_AND_OLD_IMAGES
 
-
+    # SQS Queue
     WebhooksQueue:
       Type: AWS::SQS::Queue
       Properties:
