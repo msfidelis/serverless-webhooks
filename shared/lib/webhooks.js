@@ -96,6 +96,31 @@ module.exports.run = (webhook, message) => {
 module.exports.detail =  hashkey => getWebhook(hashkey);
 
 /**
+ * Cancel a simple webhook
+ * @param {*} hashkey 
+ */
+module.exports.cancel = hashkey => {
+
+    return new Promise((resolve, reject) => {
+        getWebhook(hashkey)
+            .then(webhook => {
+                if (webhook.status_hook == "locked")   reject({status: 400, webhook: webhook, message: `webhook ${hashkey} is locked`})
+                if (webhook.status_hook == "canceled") reject({status: 400, webhook: webhook, message: `webhook ${hashkey} already canceled`})
+                if (webhook.status_hook == "success")  reject({status: 400, webhook: webhook, message: `webhook ${hashkey} already finished with success`})
+                resolve(webhook)
+            })
+            .catch(err => {
+                const response = {
+                    status: 404, 
+                    message: `webhook ${hashkey} not found`
+                };
+                reject(response);
+            })
+    });
+
+};
+
+/**
  * Verify if this Webhook can be executed
  * @param {*} webhook 
  */
@@ -115,15 +140,10 @@ const canBeExecuted = webhook => {
  * @param {*} num 
  */
 const limitHandler = webhook => {
-    return new Promise(async (resolve, reject) => {
-        await console.log(webhook.retry);
+    return new Promise((resolve, reject) => {
         const isValid = webhook.retry <= 9;
-        console.log(isValid);
-        if (isValid === true) {
-            await resolve(isValid);
-        } else {
-            await reject('locked');
-        }
+        if (isValid) resolve(isValid);
+        reject('locked')
     });
 }
 
@@ -136,8 +156,14 @@ const statusHandler = webhook => {
         const validStatus = [ 'pending', 'error', 'forced' ]
         const status  = webhook.status_hook;
         const isValid = validStatus.includes(status);
-        if (isValid) resolve(isValid)
-        reject('invalid');
+
+        if (isValid) {
+            if (webhook.status_hook == "canceled") reject('canceled');
+            resolve(isValid)
+        } else {
+            reject('invalid');
+        }
+
     });
 };
 
@@ -169,6 +195,16 @@ const invalidHandler = webhook => {
     return Promise.all([
         removeFromSQS(webhook),
         setInvalidStatus(webhook.Body.hashkey)
+    ]);
+};
+
+/**
+ * Canceled Message Handler
+ * @param {*} webhook 
+ */
+const canceledHandler = webhook => {
+    return Promise.all([
+
     ]);
 };
 
@@ -239,6 +275,17 @@ const setInvalidStatus = (webhook, body = '') => {
     const key = { hashkey: hashkey };
     const expression = "set status_hook = :s";
     const values = { ":s": "invalid"};
+    return dynamo.update(key, expression, values, DYNAMO_TABLE);
+};
+
+/**
+ * Set Canceled Status on Webhook
+ * @param {*} hashkey 
+ */
+const setCanceledStatus = hashkey => {
+    const key = { hashkey: hashkey };
+    const expression = "set status_hook = :s";
+    const values = { ":s": "canceled"};
     return dynamo.update(key, expression, values, DYNAMO_TABLE);
 };
 
