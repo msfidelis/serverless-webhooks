@@ -70,7 +70,16 @@ functions:
     events:
       - http:
           path: webhooks
-          method: post
+          method: POST
+
+  webhooks-cancel:
+    handler: modules/webhooks/endpoints/cancel.handler
+    memorySize: 128
+    timeout: 30
+    events:
+      - http:
+          path: webhooks/{hashkey}
+          method: DELETE          
 
   webhooks-detail:
     handler: modules/webhooks/endpoints/detail.handler
@@ -79,7 +88,7 @@ functions:
     events:
       - http:
           path: webhooks/{hashkey}
-          method: get
+          method: GET
   
   # Workers
   webhooks-sqs:
