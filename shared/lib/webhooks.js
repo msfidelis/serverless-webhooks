@@ -38,7 +38,7 @@ module.exports.create = async data => {
         success_response: 'NULL',
         error_response: 'NULL',
         target_url: data.target_url,
-        licenca: data.licenca || 'NULL',
+        client: data.client || 'NULL',
         method: data.method,
         payload: payload,
         headers: headers,
@@ -90,6 +90,14 @@ module.exports.run = (webhook, message) => {
 };
 
 /**
+ * 
+ * @param {*} webhook 
+ */
+module.exports.force = webhook => {
+
+};
+
+/**
  * Find a simple webhook
  * @param {*} hashkey 
  */
@@ -104,10 +112,15 @@ module.exports.cancel = hashkey => {
     return new Promise((resolve, reject) => {
         getWebhook(hashkey)
             .then(webhook => {
+
                 if (webhook.status_hook == "locked")   reject({status: 400, webhook: webhook, message: `webhook ${hashkey} is locked`})
                 if (webhook.status_hook == "canceled") reject({status: 400, webhook: webhook, message: `webhook ${hashkey} already canceled`})
                 if (webhook.status_hook == "success")  reject({status: 400, webhook: webhook, message: `webhook ${hashkey} already finished with success`})
-                resolve(webhook)
+                
+                cancelHandler(webhook)
+                    .then(success => resolve(webhook))
+                    .catch(err => reject(err))
+                
             })
             .catch(err => {
                 const response = {
@@ -202,9 +215,9 @@ const invalidHandler = webhook => {
  * Canceled Message Handler
  * @param {*} webhook 
  */
-const canceledHandler = webhook => {
+const cancelHandler = webhook => {
     return Promise.all([
-
+        setCanceledStatus(webhook.hashkey)
     ]);
 };
 

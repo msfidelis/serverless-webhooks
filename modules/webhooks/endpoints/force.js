@@ -1,3 +1,11 @@
 'use strict';
 
-exports.worker = (event, context, callback) => {}
+/**
+ * Force a Webhook Executions
+ * @param {*} event 
+ * @param {*} context 
+ * @param {*} callback 
+ */
+exports.handler = (event, context, callback) => {
+    const hashkey = event.pathParameters.hashkey;
+}
