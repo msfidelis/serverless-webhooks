@@ -41,7 +41,21 @@ exports.handler = (event, context, callback) => {
 
             const status    = err.status  || 500;
             const message   = err.message || err;
-            const response  = { status: status, message: message, webhook: err.webhook };
+            const response  = { 
+                status: status, 
+                message: message, 
+                webhook: err.webhook,
+                hateoas: {
+                    webhook_status: {
+                        method: "GET",
+                        endpoint: `/webhooks/${hashkey}`
+                    },
+                    webhook_force: {
+                        method: "POST",
+                        endpoint: `/webhooks/${hashkey}/force`
+                    }
+                } 
+            };
 
             callback(null, {
                 statusCode: status,

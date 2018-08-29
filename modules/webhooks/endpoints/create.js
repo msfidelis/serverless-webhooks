@@ -11,9 +11,9 @@ const Joi       = require('joi');
  * @param {*} context 
  * @param {*} callback 
  */
-exports.handler =  (event, context, callback) => {
+exports.handler = (event, context, callback) => {
 
-    const body =  parsers.parseEvent(event);
+    const body = parsers.parseEvent(event);
 
     validation(body)
         .then(success => {
@@ -21,6 +21,7 @@ exports.handler =  (event, context, callback) => {
                 callback(null, {
                     statusCode: 201,
                     body: JSON.stringify({
+                        status: 201,
                         webhook: webhook,
                         hateoas: {
                             webhook_status: {
@@ -47,6 +48,32 @@ exports.handler =  (event, context, callback) => {
         })
 }
 
+
+/**
+ * FIFO Webhooks 
+ * @param {*} event 
+ * @param {*} context 
+ * @param {*} callback 
+ */
+exports.batch = (event, context, callback) => {
+
+    const body  = parsers.parseEvent(event);
+    const items = body.webhooks;
+
+    const validations = items.map(item => validation(item));
+
+    Promise.all(validations)
+        .then(success => {
+
+        })
+        .catch(err => {
+            callback(null, {
+                statusCode: 400,
+                body: JSON.stringify(err)
+            });
+        });
+}
+
 /**
  * POST Schema Validation
  * require fields
@@ -59,6 +86,7 @@ const validation = async payload => {
             method: Joi.string().min(3).required(),
             headers: Joi.object(),
             datetime: Joi.string(),
+            client: Joi.string(),
             hook_name: Joi.string(),
             payload: Joi.object()
         });
